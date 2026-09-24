@@ -21,22 +21,38 @@ fi
 echo "==> minikube starten"
 minikube status >/dev/null 2>&1 || minikube start --cpus=2 --memory=4096
 
-echo "==> Docker-Umgebung des minikube verwenden"
-eval "$(minikube docker-env)"
-
 echo "==> Images bauen"
+# Auf dem Host bauen und anschliessend in den Cluster laden. Das ist
+# unabhaengig von der Container-Laufzeit des minikube -- der Umweg ueber
+# "minikube docker-env" funktioniert nur, wenn die Laufzeit Docker ist,
+# und minikube verwendet standardmaessig containerd.
 docker build -t otel-demo/billing-api:1.0.0        src/BillingApi
 docker build -t otel-demo/metering-simulator:1.0.0 src/MeteringSimulator
+
+echo "==> Images in den minikube laden"
+minikube image load otel-demo/billing-api:1.0.0
+minikube image load otel-demo/metering-simulator:1.0.0
 
 echo "==> Ausrollen"
 kubectl apply -f k8s/00-namespace.yaml
 kubectl apply -f k8s/otel-credentials.yaml
+
+# Optionaler Collector im Cluster: macht die Demo unabhaengig von dash0
+# und vom Netz. Aufruf: ./scripts/start.sh --mit-collector
+if [ "${1:-}" = "--mit-collector" ]; then
+    echo "==> Lokalen Collector ausrollen"
+    kubectl apply -f k8s/05-collector-lokal.yaml
+fi
+
 kubectl apply -f k8s/10-billing-api.yaml
 kubectl apply -f k8s/20-metering-simulator.yaml
 
 echo "==> Warten, bis die Dienste laufen"
-kubectl -n otel-demo rollout status deployment/billing-api --timeout=120s
-kubectl -n otel-demo rollout status deployment/metering-simulator --timeout=120s
+if [ "${1:-}" = "--mit-collector" ]; then
+    kubectl -n otel-demo rollout status deployment/otel-collector --timeout=180s
+fi
+kubectl -n otel-demo rollout status deployment/billing-api --timeout=180s
+kubectl -n otel-demo rollout status deployment/metering-simulator --timeout=180s
 
 echo
 echo "Fertig. Der Simulator schickt alle zwei Sekunden einen Messwert."

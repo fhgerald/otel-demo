@@ -58,8 +58,24 @@ cp k8s/otel-credentials.example.yaml k8s/otel-credentials.yaml
 ./scripts/start.sh
 ```
 
-Das Skript startet den minikube, baut beide Images **innerhalb** des minikube und
-rollt alles aus. Dadurch wird während der Vorlesung nichts aus dem Netz gezogen.
+Das Skript startet den minikube, baut beide Images auf dem Host, lädt sie mit
+`minikube image load` in den Cluster und rollt alles aus. Dadurch wird während der
+Vorlesung nichts aus dem Netz gezogen.
+
+Der Umweg über `minikube docker-env` funktioniert **nicht**: minikube verwendet
+standardmäßig containerd, nicht Docker, und der Build schlägt dann mit einem
+Buildkit-Fehler fehl.
+
+Mit `./scripts/start.sh --mit-collector` wird zusätzlich ein OpenTelemetry-Collector
+im Cluster ausgerollt. Er schreibt jede Spanne in sein Log:
+
+```bash
+kubectl -n otel-demo logs -f deployment/otel-collector
+```
+
+Damit läuft die Demo vollständig ohne dash0 und ohne Internet — als Rückfallebene,
+wenn im Hörsaal das Netz streikt. In `k8s/otel-credentials.yaml` zeigt der Endpunkt
+dann auf `http://otel-collector:4317`.
 
 Abrechnung abfragen:
 
@@ -107,3 +123,16 @@ Konto — es werden Testdaten erzeugt, und die Ansicht wird projiziert.
 Vor dem Termin einmal vollständig durchspielen und eine Aufzeichnung als
 Rückfallebene anlegen. Eine Live-Demo, die am Netz scheitert, kostet zwanzig
 Minuten und den Faden.
+
+## Stand der Erprobung
+
+Am 24. September 2026 vollständig auf minikube durchgespielt: beide Dienste
+laufen, der Simulator speist die API, `/abrechnung` wächst, und der Collector
+empfängt Spannen aus **beiden** Diensten. Je Messwert entsteht ein Trace aus vier
+Spannen — `Messwert erzeugen`, die automatische Client-Spanne, die automatische
+Server-Spanne und `Messwert verarbeiten` —, die Kontextweitergabe über
+Dienstgrenzen funktioniert also.
+
+Auch Schritt 6 ist geprüft: Nach `scale deployment/billing-api --replicas=0` läuft
+der Simulator weiter, und die Spannen tragen `Status code: Error` mit der Meldung
+`Connection refused (billing-api:8080)`.

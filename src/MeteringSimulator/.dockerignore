@@ -1,0 +1,7 @@
+# Nicht in den Build-Kontext: lokale Build-Ergebnisse. Sonst ueberschreibt
+# das mitkopierte obj/ die im Container erzeugten Restore-Dateien und
+# "dotnet publish --no-restore" scheitert mit NETSDK1064.
+bin/
+obj/
+Dockerfile
+.dockerignore
